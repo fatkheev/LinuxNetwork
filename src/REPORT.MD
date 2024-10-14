@@ -1171,3 +1171,67 @@ IP до обновления:
 
 ## Part 7. NAT
 
+Установим apache2 на машины r1, r2 и ws22 с помощью команды `sudo apt install apache2`
+
+В файле `/etc/apache2/ports.conf` на `ws22` и `r1` изменим строку `Listen 80` на `Listen 0.0.0.0:80`, то есть сделать сервер `Apache2` общедоступным:
+
+![linux](img/7.1.png)
+
+Запустим веб-сервер Apache командой `service apache2 start` на `ws22` и `r1`:
+
+![linux](img/7.2.png)
+![linux](img/7.3.png)
+
+
+Добавим в фаервол, созданный по аналогии с фаерволом из Части 4, на r2 следующие правила:
+
+1) Удаление правил в таблице filter - iptables -F
+2) Удаление правил в таблице "NAT" - iptables -F -t nat
+3) Отбрасывать все маршрутизируемые пакеты - iptables --policy FORWARD DROP
+
+![linux](img/7.5.png)
+
+Далее запускаем `sudo bash /etc/firewall.sh` на `ws22` и `r1` и проверяем как установились правила:
+
+![linux](img/7.6.png)
+
+Теперь проверим, что с `r1` не пигуется `ws22`:
+
+![linux](img/7.7.png)
+
+Теперь разрешим маршрутизацию всех пакетов протокола ICMP:
+
+![linux](img/7.9.png)
+
+И теперь мы видим, что с `r1` снова пингуется `ws22`
+
+![linux](img/7.8.png)
+
+
+### Добавляем в файл ещё два правила:
+
+Включаем SNAT, а именно маскирование всех локальных ip из локальной сети, находящейся за r2 (по обозначениям из Части 5 - сеть 10.20.0.0)
+
+Включаем DNAT на 8080 порт машины r2 и добавим к веб-серверу Apache, запущенному на ws22, доступ извне сети
+
+```
+#SNAT
+iptables -A FORWARD -p tcp --dport 80 -j ACCEPT
+iptables -A FORWARD -m state --state ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i enp0s9 -o enp0s8 -j ACCEPT
+iptables -t nat -A POSTROUTING -o enp0s8 -s 10.20.0.0/26 -j SNAT --to-source 10.100.0.12
+
+#DNAT
+iptables -t nat -A PREROUTING -i enp0s8 -p tcp --dport 8080 -j DNAT --to-destination 10.20.0.20:80
+```
+
+Проверить соединение по TCP для SNAT, для этого с ws22 подключиться к серверу Apache на r1 командой:
+telnet [адрес] [порт]
+![linux](img/7.10.png)
+
+Проверить соединение по TCP для DNAT, для этого с r1 подключиться к серверу Apache на ws22 командой telnet (обращаться по адресу r2 и порту 8080)
+
+![linux](img/7.11.png)
+
+Сделвем снимки машин:
+![linux](img/7.12.png)
